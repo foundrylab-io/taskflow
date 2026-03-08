@@ -22,7 +22,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider afterSignInUrl="/dashboard" afterSignUpUrl="/dashboard">
+    <ClerkProvider>
       <html
         lang="en"
         className={`bg-white dark:bg-gray-950 text-black dark:text-white ${manrope.className}`}
