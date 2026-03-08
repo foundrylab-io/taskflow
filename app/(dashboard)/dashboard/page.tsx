@@ -1,287 +1,362 @@
-'use client';
-
+import { db } from '@/lib/db/drizzle';
+import { projects, tasks } from '@/lib/db/schema';
+import { getUser } from '@/lib/db/queries';
+import { eq, and, gte, lte } from 'drizzle-orm';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardFooter
-} from '@/components/ui/card';
-import { customerPortalAction } from '@/lib/payments/actions';
-import { useActionState } from 'react';
-import { TeamDataWithMembers, User } from '@/lib/db/schema';
-import { removeTeamMember, inviteTeamMember } from '@/app/(login)/actions';
-import useSWR from 'swr';
-import { Suspense } from 'react';
 import { Input } from '@/components/ui/input';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
-import { Loader2, PlusCircle } from 'lucide-react';
+import { 
+  FolderPlus, 
+  Plus, 
+  Clock, 
+  AlertTriangle, 
+  CheckCircle2, 
+  Calendar,
+  Target
+} from 'lucide-react';
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 
-type ActionState = {
-  error?: string;
-  success?: string;
-};
+async function createProject(formData: FormData) {
+  'use server';
+  
+  const user = await getUser();
+  if (!user) return;
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+  const name = formData.get('name') as string;
+  const description = formData.get('description') as string;
+  
+  if (!name) return;
 
-function SubscriptionSkeleton() {
-  return (
-    <Card className="mb-8 h-[140px]">
-      <CardHeader>
-        <CardTitle>Team Subscription</CardTitle>
-      </CardHeader>
-    </Card>
-  );
+  await db.insert(projects).values({
+    userId: user.id,
+    name,
+    description,
+  });
+
+  revalidatePath('/dashboard');
 }
 
-function ManageSubscription() {
-  const { data: teamData } = useSWR<TeamDataWithMembers>('/api/team', fetcher);
+async function createTask(formData: FormData) {
+  'use server';
+  
+  const user = await getUser();
+  if (!user) return;
 
-  return (
-    <Card className="mb-8">
-      <CardHeader>
-        <CardTitle>Team Subscription</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
-            <div className="mb-4 sm:mb-0">
-              <p className="font-medium">
-                Current Plan: {teamData?.planName || 'Free'}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {teamData?.subscriptionStatus === 'active'
-                  ? 'Billed monthly'
-                  : teamData?.subscriptionStatus === 'trialing'
-                  ? 'Trial period'
-                  : 'No active subscription'}
-              </p>
-            </div>
-            <form action={customerPortalAction}>
-              <Button type="submit" variant="outline">
-                Manage Subscription
-              </Button>
-            </form>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  const title = formData.get('title') as string;
+  const projectId = parseInt(formData.get('projectId') as string);
+  const priority = formData.get('priority') as string;
+  const dueDate = formData.get('dueDate') as string;
+  
+  if (!title || !projectId) return;
+
+  await db.insert(tasks).values({
+    userId: user.id,
+    projectId,
+    title,
+    priority: priority || 'medium',
+    dueDate: dueDate || null,
+  });
+
+  revalidatePath('/dashboard');
 }
 
-function TeamMembersSkeleton() {
-  return (
-    <Card className="mb-8 h-[140px]">
-      <CardHeader>
-        <CardTitle>Team Members</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="animate-pulse space-y-4 mt-1">
-          <div className="flex items-center space-x-4">
-            <div className="size-8 rounded-full bg-gray-200"></div>
-            <div className="space-y-2">
-              <div className="h-4 w-32 bg-gray-200 rounded"></div>
-              <div className="h-3 w-14 bg-gray-200 rounded"></div>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+async function toggleTaskComplete(formData: FormData) {
+  'use server';
+  
+  const user = await getUser();
+  if (!user) return;
+
+  const taskId = parseInt(formData.get('taskId') as string);
+  const isCompleted = formData.get('isCompleted') === 'true';
+  
+  await db.update(tasks)
+    .set({ 
+      status: isCompleted ? 'done' : 'todo',
+      completedAt: isCompleted ? new Date() : null,
+    })
+    .where(and(eq(tasks.id, taskId), eq(tasks.userId, user.id)));
+
+  revalidatePath('/dashboard');
 }
 
-function TeamMembers() {
-  const { data: teamData } = useSWR<TeamDataWithMembers>('/api/team', fetcher);
-  const [removeState, removeAction, isRemovePending] = useActionState<
-    ActionState,
-    FormData
-  >(removeTeamMember, {});
-
-  const getUserDisplayName = (user: Pick<User, 'id' | 'name' | 'email'>) => {
-    return user.name || user.email || 'Unknown User';
-  };
-
-  if (!teamData?.teamMembers?.length) {
-    return (
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Team Members</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">No team members yet.</p>
-        </CardContent>
-      </Card>
-    );
+export default async function Dashboard() {
+  const user = await getUser();
+  
+  if (!user) {
+    redirect('/sign-in');
   }
 
-  return (
-    <Card className="mb-8">
-      <CardHeader>
-        <CardTitle>Team Members</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ul className="space-y-4">
-          {teamData.teamMembers.map((member, index) => (
-            <li key={member.id} className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <Avatar>
-                  {/* 
-                    This app doesn't save profile images, but here
-                    is how you'd show them:
+  const userProjects = await db.query.projects.findMany({
+    where: and(eq(projects.userId, user.id), eq(projects.isArchived, false)),
+    with: {
+      tasks: true,
+    },
+  });
 
-                    <AvatarImage
-                      src={member.user.image || ''}
-                      alt={getUserDisplayName(member.user)}
-                    />
-                  */}
-                  <AvatarFallback>
-                    {getUserDisplayName(member.user)
-                      .split(' ')
-                      .map((n) => n[0])
-                      .join('')}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-medium">
-                    {getUserDisplayName(member.user)}
-                  </p>
-                  <p className="text-sm text-muted-foreground capitalize">
-                    {member.role}
-                  </p>
+  const userTasks = await db.query.tasks.findMany({
+    where: eq(tasks.userId, user.id),
+    with: {
+      project: true,
+    },
+  });
+
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const overdueTasks = userTasks.filter(task => 
+    task.dueDate && 
+    task.dueDate < todayStr && 
+    task.status !== 'done'
+  );
+
+  const upcomingTasks = userTasks.filter(task => 
+    task.dueDate && 
+    task.dueDate >= todayStr && 
+    task.dueDate <= weekFromNow && 
+    task.status !== 'done'
+  );
+
+  const completedTasks = userTasks.filter(task => task.status === 'done');
+  const totalTasks = userTasks.length;
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Dashboard</h1>
+        <div className="text-sm text-muted-foreground">
+          Welcome back, {user.name || 'User'}
+        </div>
+      </div>
+
+      {/* Stats Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
+            <FolderPlus className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{userProjects.length}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
+            <Target className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalTasks}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Completed</CardTitle>
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{completedTasks.length}</div>
+            <p className="text-xs text-muted-foreground">
+              {totalTasks > 0 ? Math.round((completedTasks.length / totalTasks) * 100) : 0}% completion rate
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Overdue</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-red-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">{overdueTasks.length}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Create Project */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FolderPlus className="h-5 w-5" />
+              Create New Project
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form action={createProject} className="space-y-4">
+              <Input 
+                name="name" 
+                placeholder="Project name" 
+                required 
+              />
+              <Input 
+                name="description" 
+                placeholder="Project description (optional)" 
+              />
+              <Button type="submit" className="w-full">
+                Create Project
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Create Task */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Create New Task
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form action={createTask} className="space-y-4">
+              <Input 
+                name="title" 
+                placeholder="Task title" 
+                required 
+              />
+              <select 
+                name="projectId" 
+                className="w-full px-3 py-2 border border-input bg-background rounded-md"
+                required
+              >
+                <option value="">Select a project</option>
+                {userProjects.map(project => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <select 
+                  name="priority" 
+                  className="px-3 py-2 border border-input bg-background rounded-md"
+                >
+                  <option value="low">Low Priority</option>
+                  <option value="medium">Medium Priority</option>
+                  <option value="high">High Priority</option>
+                </select>
+                <Input 
+                  name="dueDate" 
+                  type="date" 
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={userProjects.length === 0}>
+                {userProjects.length === 0 ? 'Create a project first' : 'Create Task'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Overdue Tasks */}
+      {overdueTasks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Overdue Tasks ({overdueTasks.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {overdueTasks.map(task => (
+                <div key={task.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex-1">
+                    <div className="font-medium">{task.title}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {task.project.name} • Due: {task.dueDate} • {task.priority} priority
+                    </div>
+                  </div>
+                  <form action={toggleTaskComplete}>
+                    <input type="hidden" name="taskId" value={task.id} />
+                    <input type="hidden" name="isCompleted" value="true" />
+                    <Button variant="outline" size="sm" type="submit">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </Button>
+                  </form>
                 </div>
-              </div>
-              {index > 1 ? (
-                <form action={removeAction}>
-                  <input type="hidden" name="memberId" value={member.id} />
-                  <Button
-                    type="submit"
-                    variant="outline"
-                    size="sm"
-                    disabled={isRemovePending}
-                  >
-                    {isRemovePending ? 'Removing...' : 'Remove'}
-                  </Button>
-                </form>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-        {removeState?.error && (
-          <p className="text-red-500 mt-4">{removeState.error}</p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function InviteTeamMemberSkeleton() {
-  return (
-    <Card className="h-[260px]">
-      <CardHeader>
-        <CardTitle>Invite Team Member</CardTitle>
-      </CardHeader>
-    </Card>
-  );
-}
-
-function InviteTeamMember() {
-  const { data: user } = useSWR<User>('/api/user', fetcher);
-  const isOwner = user?.role === 'owner';
-  const [inviteState, inviteAction, isInvitePending] = useActionState<
-    ActionState,
-    FormData
-  >(inviteTeamMember, {});
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Invite Team Member</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form action={inviteAction} className="space-y-4">
-          <div>
-            <Label htmlFor="email" className="mb-2">
-              Email
-            </Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="Enter email"
-              required
-              disabled={!isOwner}
-            />
-          </div>
-          <div>
-            <Label>Role</Label>
-            <RadioGroup
-              defaultValue="member"
-              name="role"
-              className="flex space-x-4"
-              disabled={!isOwner}
-            >
-              <div className="flex items-center space-x-2 mt-2">
-                <RadioGroupItem value="member" id="member" />
-                <Label htmlFor="member">Member</Label>
-              </div>
-              <div className="flex items-center space-x-2 mt-2">
-                <RadioGroupItem value="owner" id="owner" />
-                <Label htmlFor="owner">Owner</Label>
-              </div>
-            </RadioGroup>
-          </div>
-          {inviteState?.error && (
-            <p className="text-red-500">{inviteState.error}</p>
-          )}
-          {inviteState?.success && (
-            <p className="text-green-500">{inviteState.success}</p>
-          )}
-          <Button
-            type="submit"
-            className="bg-orange-500 hover:bg-orange-600 text-white"
-            disabled={isInvitePending || !isOwner}
-          >
-            {isInvitePending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Inviting...
-              </>
-            ) : (
-              <>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Invite Member
-              </>
-            )}
-          </Button>
-        </form>
-      </CardContent>
-      {!isOwner && (
-        <CardFooter>
-          <p className="text-sm text-muted-foreground">
-            You must be a team owner to invite new members.
-          </p>
-        </CardFooter>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
-    </Card>
-  );
-}
 
-export default function SettingsPage() {
-  return (
-    <section className="flex-1 p-4 lg:p-8">
-      <h1 className="text-lg lg:text-2xl font-medium mb-6">Team Settings</h1>
-      <Suspense fallback={<SubscriptionSkeleton />}>
-        <ManageSubscription />
-      </Suspense>
-      <Suspense fallback={<TeamMembersSkeleton />}>
-        <TeamMembers />
-      </Suspense>
-      <Suspense fallback={<InviteTeamMemberSkeleton />}>
-        <InviteTeamMember />
-      </Suspense>
-    </section>
+      {/* Upcoming Tasks */}
+      {upcomingTasks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Upcoming Tasks ({upcomingTasks.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {upcomingTasks.map(task => (
+                <div key={task.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex-1">
+                    <div className="font-medium">{task.title}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {task.project.name} • Due: {task.dueDate} • {task.priority} priority
+                    </div>
+                  </div>
+                  <form action={toggleTaskComplete}>
+                    <input type="hidden" name="taskId" value={task.id} />
+                    <input type="hidden" name="isCompleted" value="true" />
+                    <Button variant="outline" size="sm" type="submit">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </Button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recent Projects */}
+      {userProjects.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FolderPlus className="h-5 w-5" />
+              Your Projects
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {userProjects.map(project => {
+                const projectTasks = project.tasks || [];
+                const completedCount = projectTasks.filter(t => t.status === 'done').length;
+                
+                return (
+                  <div key={project.id} className="p-4 border rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: project.color || '#3B82F6' }}
+                      />
+                      <h3 className="font-medium">{project.name}</h3>
+                    </div>
+                    {project.description && (
+                      <p className="text-sm text-muted-foreground mb-2">
+                        {project.description}
+                      </p>
+                    )}
+                    <div className="text-xs text-muted-foreground">
+                      {completedCount}/{projectTasks.length} tasks completed
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
