@@ -5,11 +5,11 @@ import { currentUser } from '@clerk/nextjs/server';
 
 export async function getUser() {
   const clerkUser = await currentUser();
-  if (!clerkUser) {
+  if (\!clerkUser) {
     return null;
   }
 
-  const user = await db
+  const existing = await db
     .select()
     .from(users)
     .where(
@@ -20,11 +20,41 @@ export async function getUser() {
     )
     .limit(1);
 
-  if (user.length === 0) {
-    return null;
+  if (existing.length > 0) {
+    return existing[0];
   }
 
-  return user[0];
+  // Just-in-time provisioning: create a DB row for new Clerk users
+  const email =
+    clerkUser.emailAddresses[0]?.emailAddress ?? 'unknown@example.com';
+  const name =
+    [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') ||
+    clerkUser.username ||
+    email.split('@')[0];
+
+  const inserted = await db
+    .insert(users)
+    .values({
+      clerkId: clerkUser.id,
+      email,
+      name,
+      role: 'owner',
+    })
+    .onConflictDoNothing()
+    .returning();
+
+  if (inserted.length > 0) {
+    return inserted[0];
+  }
+
+  // Race condition: another request inserted between our SELECT and INSERT
+  const retry = await db
+    .select()
+    .from(users)
+    .where(eq(users.clerkId, clerkUser.id))
+    .limit(1);
+
+  return retry[0] ?? null;
 }
 
 export async function getTeamByStripeCustomerId(customerId: string) {
@@ -71,7 +101,7 @@ export async function getUserWithTeam(userId: number) {
 
 export async function getActivityLogs() {
   const user = await getUser();
-  if (!user) {
+  if (\!user) {
     throw new Error('User not authenticated');
   }
 
@@ -92,7 +122,7 @@ export async function getActivityLogs() {
 
 export async function getTeamForUser() {
   const user = await getUser();
-  if (!user) {
+  if (\!user) {
     return null;
   }
 
