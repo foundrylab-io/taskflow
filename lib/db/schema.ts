@@ -150,7 +150,7 @@ export const projects = pgTable('projects', {
     .references(() => users.id),
   name: varchar('name', { length: 100 }).notNull(),
   description: text('description'),
-  color: varchar('color', { length: 7 }).default('#3B82F6'),
+  color: varchar('color', { length: 7 }).notNull().default('#6366f1'),
   isArchived: boolean('is_archived').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
