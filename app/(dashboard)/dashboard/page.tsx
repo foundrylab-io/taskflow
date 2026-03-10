@@ -1,31 +1,33 @@
 import { db } from '@/lib/db/drizzle';
-import { projects, tasks } from '@/lib/db/schema';
+import { projects, tasks, notes } from '@/lib/db/schema';
 import { getUser } from '@/lib/db/queries';
-import { eq, and, gte, lte } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  FolderPlus, 
-  Plus, 
-  Clock, 
-  AlertTriangle, 
-  CheckCircle2, 
+import {
+  FolderPlus,
+  Plus,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
   Calendar,
-  Target
+  Target,
+  StickyNote,
+  Trash2
 } from 'lucide-react';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 
 async function createProject(formData: FormData) {
   'use server';
-  
+
   const user = await getUser();
   if (!user) return;
 
   const name = formData.get('name') as string;
   const description = formData.get('description') as string;
-  
+
   if (!name) return;
 
   await db.insert(projects).values({
@@ -39,7 +41,7 @@ async function createProject(formData: FormData) {
 
 async function createTask(formData: FormData) {
   'use server';
-  
+
   const user = await getUser();
   if (!user) return;
 
@@ -47,7 +49,7 @@ async function createTask(formData: FormData) {
   const projectId = parseInt(formData.get('projectId') as string);
   const priority = formData.get('priority') as string;
   const dueDate = formData.get('dueDate') as string;
-  
+
   if (!title || !projectId) return;
 
   await db.insert(tasks).values({
@@ -63,15 +65,15 @@ async function createTask(formData: FormData) {
 
 async function toggleTaskComplete(formData: FormData) {
   'use server';
-  
+
   const user = await getUser();
   if (!user) return;
 
   const taskId = parseInt(formData.get('taskId') as string);
   const isCompleted = formData.get('isCompleted') === 'true';
-  
+
   await db.update(tasks)
-    .set({ 
+    .set({
       status: isCompleted ? 'done' : 'todo',
       completedAt: isCompleted ? new Date() : null,
     })
@@ -80,9 +82,41 @@ async function toggleTaskComplete(formData: FormData) {
   revalidatePath('/dashboard');
 }
 
+async function createNote(formData: FormData) {
+  'use server';
+
+  const user = await getUser();
+  if (!user) return;
+
+  const content = formData.get('content') as string;
+  if (!content || !content.trim()) return;
+
+  await db.insert(notes).values({
+    userId: user.id,
+    content: content.trim(),
+  });
+
+  revalidatePath('/dashboard');
+}
+
+async function deleteNote(formData: FormData) {
+  'use server';
+
+  const user = await getUser();
+  if (!user) return;
+
+  const noteId = parseInt(formData.get('noteId') as string);
+  if (!noteId) return;
+
+  await db.delete(notes)
+    .where(and(eq(notes.id, noteId), eq(notes.userId, user.id)));
+
+  revalidatePath('/dashboard');
+}
+
 export default async function Dashboard() {
   const user = await getUser();
-  
+
   if (!user) {
     redirect('/sign-in');
   }
@@ -101,20 +135,25 @@ export default async function Dashboard() {
     },
   });
 
+  const userNotes = await db.query.notes.findMany({
+    where: eq(notes.userId, user.id),
+    orderBy: [desc(notes.createdAt)],
+  });
+
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
   const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-  const overdueTasks = userTasks.filter(task => 
-    task.dueDate && 
-    task.dueDate < todayStr && 
+  const overdueTasks = userTasks.filter(task =>
+    task.dueDate &&
+    task.dueDate < todayStr &&
     task.status !== 'done'
   );
 
-  const upcomingTasks = userTasks.filter(task => 
-    task.dueDate && 
-    task.dueDate >= todayStr && 
-    task.dueDate <= weekFromNow && 
+  const upcomingTasks = userTasks.filter(task =>
+    task.dueDate &&
+    task.dueDate >= todayStr &&
+    task.dueDate <= weekFromNow &&
     task.status !== 'done'
   );
 
@@ -187,14 +226,14 @@ export default async function Dashboard() {
           </CardHeader>
           <CardContent>
             <form action={createProject} className="space-y-4">
-              <Input 
-                name="name" 
-                placeholder="Project name" 
-                required 
+              <Input
+                name="name"
+                placeholder="Project name"
+                required
               />
-              <Input 
-                name="description" 
-                placeholder="Project description (optional)" 
+              <Input
+                name="description"
+                placeholder="Project description (optional)"
               />
               <Button type="submit" className="w-full">
                 Create Project
@@ -213,13 +252,13 @@ export default async function Dashboard() {
           </CardHeader>
           <CardContent>
             <form action={createTask} className="space-y-4">
-              <Input 
-                name="title" 
-                placeholder="Task title" 
-                required 
+              <Input
+                name="title"
+                placeholder="Task title"
+                required
               />
-              <select 
-                name="projectId" 
+              <select
+                name="projectId"
                 className="w-full px-3 py-2 border border-input bg-background rounded-md"
                 required
               >
@@ -231,17 +270,17 @@ export default async function Dashboard() {
                 ))}
               </select>
               <div className="grid grid-cols-2 gap-2">
-                <select 
-                  name="priority" 
+                <select
+                  name="priority"
                   className="px-3 py-2 border border-input bg-background rounded-md"
                 >
                   <option value="low">Low Priority</option>
                   <option value="medium">Medium Priority</option>
                   <option value="high">High Priority</option>
                 </select>
-                <Input 
-                  name="dueDate" 
-                  type="date" 
+                <Input
+                  name="dueDate"
+                  type="date"
                 />
               </div>
               <Button type="submit" className="w-full" disabled={userProjects.length === 0}>
@@ -268,7 +307,7 @@ export default async function Dashboard() {
                   <div className="flex-1">
                     <div className="font-medium">{task.title}</div>
                     <div className="text-sm text-muted-foreground">
-                      {task.project.name} • Due: {task.dueDate} • {task.priority} priority
+                      {task.project.name} &middot; Due: {task.dueDate} &middot; {task.priority} priority
                     </div>
                   </div>
                   <form action={toggleTaskComplete}>
@@ -301,7 +340,7 @@ export default async function Dashboard() {
                   <div className="flex-1">
                     <div className="font-medium">{task.title}</div>
                     <div className="text-sm text-muted-foreground">
-                      {task.project.name} • Due: {task.dueDate} • {task.priority} priority
+                      {task.project.name} &middot; Due: {task.dueDate} &middot; {task.priority} priority
                     </div>
                   </div>
                   <form action={toggleTaskComplete}>
@@ -332,12 +371,12 @@ export default async function Dashboard() {
               {userProjects.map(project => {
                 const projectTasks = project.tasks || [];
                 const completedCount = projectTasks.filter(t => t.status === 'done').length;
-                
+
                 return (
                   <div key={project.id} className="p-4 border rounded-lg">
                     <div className="flex items-center gap-2 mb-2">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
+                      <div
+                        className="w-3 h-3 rounded-full"
                         style={{ backgroundColor: project.color || '#3B82F6' }}
                       />
                       <h3 className="font-medium">{project.name}</h3>
@@ -357,6 +396,59 @@ export default async function Dashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* Quick Notes */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <StickyNote className="h-5 w-5" />
+            Quick Notes
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form action={createNote} className="space-y-3 mb-6">
+            <textarea
+              name="content"
+              placeholder="Write a quick note..."
+              required
+              className="w-full min-h-[80px] px-3 py-2 border border-input bg-background rounded-md text-sm resize-y"
+            />
+            <Button type="submit" className="w-full">
+              Save Note
+            </Button>
+          </form>
+
+          {userNotes.length > 0 ? (
+            <div className="space-y-3">
+              {userNotes.map(note => (
+                <div key={note.id} className="flex items-start justify-between gap-3 p-3 border rounded-lg">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {new Date(note.createdAt).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </p>
+                  </div>
+                  <form action={deleteNote}>
+                    <input type="hidden" name="noteId" value={note.id} />
+                    <Button variant="ghost" size="sm" type="submit" className="text-muted-foreground hover:text-red-600">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No notes yet. Write your first note above.
+            </p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
