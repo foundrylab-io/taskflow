@@ -30,10 +30,13 @@ async function createProject(formData: FormData) {
 
   if (!name) return;
 
+  const color = formData.get('color') as string;
+
   await db.insert(projects).values({
     userId: user.id,
     name,
     description,
+    color: color || '#6366f1',
   });
 
   revalidatePath('/dashboard');
@@ -235,6 +238,16 @@ export default async function Dashboard() {
                 name="description"
                 placeholder="Project description (optional)"
               />
+              <div className="flex items-center gap-3">
+                <label htmlFor="project-color" className="text-sm text-muted-foreground">Color</label>
+                <input
+                  id="project-color"
+                  name="color"
+                  type="color"
+                  defaultValue="#6366f1"
+                  className="h-9 w-14 rounded border border-input cursor-pointer"
+                />
+              </div>
               <Button type="submit" className="w-full">
                 Create Project
               </Button>
@@ -377,7 +390,7 @@ export default async function Dashboard() {
                     <div className="flex items-center gap-2 mb-2">
                       <div
                         className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: project.color || '#3B82F6' }}
+                        style={{ backgroundColor: project.color || '#6366f1' }}
                       />
                       <h3 className="font-medium">{project.name}</h3>
                     </div>
