@@ -1,3 +1,4 @@
+// Migration runner — auto-discovers all .sql files in migrations/
 import postgres from 'postgres';
 import { readFileSync } from 'fs';
 import { join } from 'path';
