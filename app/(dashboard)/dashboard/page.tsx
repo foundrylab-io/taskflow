@@ -392,6 +392,10 @@ export default async function Dashboard() {
                     const projectTasks = project.tasks || [];
                     const completedCount = projectTasks.filter(t => t.status === 'done').length;
 
+                    const pct = projectTasks.length > 0
+                      ? Math.round((completedCount / projectTasks.length) * 100)
+                      : 0;
+
                     return (
                       <div key={project.id} className="p-4 border rounded-lg">
                         <div className="flex items-center gap-2 mb-2">
@@ -406,8 +410,22 @@ export default async function Dashboard() {
                             {project.description}
                           </p>
                         )}
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-xs text-muted-foreground mb-2">
                           {completedCount}/{projectTasks.length} tasks completed
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${pct}%`,
+                                backgroundColor: project.color || '#6366f1',
+                              }}
+                            />
+                          </div>
+                          <span className="text-xs font-medium text-muted-foreground w-8 text-right">
+                            {pct}%
+                          </span>
                         </div>
                       </div>
                     );
