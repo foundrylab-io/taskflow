@@ -1,8 +1,11 @@
 import Link from 'next/link';
+import { auth } from '@clerk/nextjs/server';
 import { UserButton } from '@clerk/nextjs';
 import { CircleIcon } from 'lucide-react';
 
-function Header() {
+async function Header() {
+  const { userId } = await auth();
+
   return (
     <header className="border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
@@ -13,13 +16,24 @@ function Header() {
           </span>
         </Link>
         <div className="flex items-center space-x-4">
-          <Link
-            href="/dashboard"
-            className="text-sm font-medium text-gray-700 hover:text-gray-900"
-          >
-            Dashboard
-          </Link>
-          <UserButton />
+          {userId ? (
+            <>
+              <Link
+                href="/dashboard"
+                className="text-sm font-medium text-gray-700 hover:text-gray-900"
+              >
+                Dashboard
+              </Link>
+              <UserButton />
+            </>
+          ) : (
+            <Link
+              href="/sign-in"
+              className="text-sm font-medium text-gray-700 hover:text-gray-900"
+            >
+              Sign in
+            </Link>
+          )}
         </div>
       </div>
     </header>
