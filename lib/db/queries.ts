@@ -2,6 +2,7 @@ import { desc, and, eq, isNull } from 'drizzle-orm';
 import { db } from './drizzle';
 import { activityLogs, teamMembers, teams, users } from './schema';
 import { currentUser } from '@clerk/nextjs/server';
+import type { TeamDataWithMembers } from './schema';
 
 export async function getUser() {
   const clerkUser = await currentUser();
@@ -120,7 +121,7 @@ export async function getActivityLogs() {
     .limit(10);
 }
 
-export async function getTeamForUser() {
+export async function getTeamForUser(): Promise<TeamDataWithMembers | null> {
   const user = await getUser();
   if (!user) {
     return null;
@@ -147,5 +148,5 @@ export async function getTeamForUser() {
     }
   });
 
-  return result?.team || null;
+  return (result?.team as TeamDataWithMembers) ?? null;
 }
