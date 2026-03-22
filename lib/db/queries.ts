@@ -1,7 +1,7 @@
 import { desc, and, eq, isNull } from 'drizzle-orm';
 import { db } from './drizzle';
 import { activityLogs, teamMembers, teams, users } from './schema';
-import { currentUser } from '@clerk/nextjs/server';
+import { currentUser, clerkClient } from '@clerk/nextjs/server';
 import type { TeamDataWithMembers } from './schema';
 
 export async function getUser() {
@@ -64,7 +64,7 @@ export async function getUser() {
   return retry[0] ?? null;
 }
 
-async function ensureTeamExists(userId: number, userName: string) {
+export async function ensureTeamExists(userId: number, userName: string) {
   // Check if user already has a team membership
   const membership = await db
     .select()
@@ -92,6 +92,85 @@ async function ensureTeamExists(userId: number, userName: string) {
   }
 }
 
+
+export async function ensureUserExists(clerkId: string): Promise<{ id: number; name: string | null; email: string } | null> {
+  // Check if user already exists
+  const existing = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.clerkId, clerkId))
+    .limit(1);
+
+  if (existing.length > 0) return existing[0];
+
+  // JIT provisioning: fetch Clerk user data and create DB record
+  try {
+    const clerk = await clerkClient();
+    const clerkUser = await clerk.users.getUser(clerkId);
+    const email =
+      clerkUser.emailAddresses[0]?.emailAddress ?? 'unknown@example.com';
+    const name =
+      [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') ||
+      clerkUser.username ||
+      email.split('@')[0];
+
+    const inserted = await db
+      .insert(users)
+      .values({
+        clerkId,
+        email,
+        name,
+        role: 'owner',
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    if (inserted.length > 0) return inserted[0];
+
+    // Race condition: another request inserted between our check and insert
+    const retry = await db
+      .select({ id: users.id, name: users.name, email: users.email })
+      .from(users)
+      .where(eq(users.clerkId, clerkId))
+      .limit(1);
+
+    return retry[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getTeamIdByClerkId(clerkId: string): Promise<number | null> {
+  const user = await ensureUserExists(clerkId);
+  if (!user) return null;
+
+  await ensureTeamExists(user.id, user.name || user.email);
+
+  const memberRows = await db
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(eq(teamMembers.userId, user.id))
+    .limit(1);
+
+  return memberRows[0]?.teamId ?? null;
+}
+
+export async function getTeamAndUserIdByClerkId(clerkId: string): Promise<{ internalUserId: number; teamId: number } | null> {
+  const user = await ensureUserExists(clerkId);
+  if (!user) return null;
+
+  await ensureTeamExists(user.id, user.name || user.email);
+
+  const memberRows = await db
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(eq(teamMembers.userId, user.id))
+    .limit(1);
+
+  if (!memberRows.length) return null;
+
+  return { internalUserId: user.id, teamId: memberRows[0].teamId };
+}
 export async function getTeamByStripeCustomerId(customerId: string) {
   const result = await db
     .select()
