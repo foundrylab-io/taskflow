@@ -12,7 +12,7 @@ async function Header() {
         <Link href="/" className="flex items-center">
           <CircleIcon className="h-6 w-6 text-orange-500" />
           <span className="ml-2 text-xl font-semibold text-gray-900">
-            ACME
+            TaskFlow
           </span>
         </Link>
         <div className="flex items-center space-x-4">
