@@ -4,8 +4,8 @@ import { Manrope } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 
 export const metadata: Metadata = {
-  title: 'Next.js SaaS Starter',
-  description: 'Get started quickly with Next.js, Postgres, and Stripe.',
+  title: 'TaskFlow',
+  description: 'Manage your TaskFlow account.',
 };
 
 export const viewport: Viewport = {
