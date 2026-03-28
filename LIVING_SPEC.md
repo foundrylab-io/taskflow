@@ -47,3 +47,8 @@ A self-serve task management SaaS that lets small startups and remote teams crea
 
 ## Deployment
 - Last updated: 2026-03-28 15:10 UTC
+
+
+## Fix — 2026-03-28 15:26 UTC
+- Fixed: In app/(dashboard)/layout.tsx, find the <span> element inside the sidebar logo section that reads 'ProjectFlow' and change it to 'TaskFlow'. The exact line is: <span className="text-lg font-semibold text-gray-900">ProjectFlow</span> — change 'ProjectFlow' to 'TaskFlow'.
+- Files changed: app/(dashboard)/layout.tsx
