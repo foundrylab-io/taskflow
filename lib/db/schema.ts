@@ -5,6 +5,7 @@ import {
   text,
   timestamp,
   integer,
+  date,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -68,15 +69,79 @@ export const invitations = pgTable('invitations', {
   status: varchar('status', { length: 20 }).notNull().default('pending'),
 });
 
+// ── Projects ──────────────────────────────────────────────────────────────────
+
+export const projects = pgTable('projects', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id),
+  teamId: integer('team_id')
+    .notNull()
+    .references(() => teams.id),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  status: varchar('status', { length: 50 }).notNull().default('active'),
+  deadline: date('deadline'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+
+export const tasks = pgTable('tasks', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id),
+  teamId: integer('team_id')
+    .notNull()
+    .references(() => teams.id),
+  projectId: integer('project_id')
+    .notNull()
+    .references(() => projects.id),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  status: varchar('status', { length: 50 }).notNull().default('todo'),
+  priority: varchar('priority', { length: 20 }).notNull().default('medium'),
+  deadline: date('deadline'),
+  assigneeId: integer('assignee_id').references(() => users.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ── Task Comments ─────────────────────────────────────────────────────────────
+
+export const taskComments = pgTable('task_comments', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id),
+  taskId: integer('task_id')
+    .notNull()
+    .references(() => tasks.id),
+  content: text('content').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ── Relations ─────────────────────────────────────────────────────────────────
+
 export const teamsRelations = relations(teams, ({ many }) => ({
   teamMembers: many(teamMembers),
   activityLogs: many(activityLogs),
   invitations: many(invitations),
+  projects: many(projects),
+  tasks: many(tasks),
 }));
 
 export const usersRelations = relations(users, ({ many }) => ({
   teamMembers: many(teamMembers),
   invitationsSent: many(invitations),
+  projects: many(projects),
+  tasksCreated: many(tasks, { relationName: 'tasksCreated' }),
+  tasksAssigned: many(tasks, { relationName: 'tasksAssigned' }),
+  taskComments: many(taskComments),
 }));
 
 export const invitationsRelations = relations(invitations, ({ one }) => ({
@@ -112,6 +177,53 @@ export const activityLogsRelations = relations(activityLogs, ({ one }) => ({
   }),
 }));
 
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  user: one(users, {
+    fields: [projects.userId],
+    references: [users.id],
+  }),
+  team: one(teams, {
+    fields: [projects.teamId],
+    references: [teams.id],
+  }),
+  tasks: many(tasks),
+}));
+
+export const tasksRelations = relations(tasks, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [tasks.projectId],
+    references: [projects.id],
+  }),
+  creator: one(users, {
+    fields: [tasks.userId],
+    references: [users.id],
+    relationName: 'tasksCreated',
+  }),
+  assignee: one(users, {
+    fields: [tasks.assigneeId],
+    references: [users.id],
+    relationName: 'tasksAssigned',
+  }),
+  team: one(teams, {
+    fields: [tasks.teamId],
+    references: [teams.id],
+  }),
+  comments: many(taskComments),
+}));
+
+export const taskCommentsRelations = relations(taskComments, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskComments.taskId],
+    references: [tasks.id],
+  }),
+  user: one(users, {
+    fields: [taskComments.userId],
+    references: [users.id],
+  }),
+}));
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Team = typeof teams.$inferSelect;
@@ -122,6 +234,13 @@ export type ActivityLog = typeof activityLogs.$inferSelect;
 export type NewActivityLog = typeof activityLogs.$inferInsert;
 export type Invitation = typeof invitations.$inferSelect;
 export type NewInvitation = typeof invitations.$inferInsert;
+export type Project = typeof projects.$inferSelect;
+export type NewProject = typeof projects.$inferInsert;
+export type Task = typeof tasks.$inferSelect;
+export type NewTask = typeof tasks.$inferInsert;
+export type TaskComment = typeof taskComments.$inferSelect;
+export type NewTaskComment = typeof taskComments.$inferInsert;
+
 export type TeamDataWithMembers = Team & {
   teamMembers: (TeamMember & {
     user: Pick<User, 'id' | 'name' | 'email'>;
