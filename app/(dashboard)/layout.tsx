@@ -41,7 +41,7 @@ export default async function DashboardLayout({
           <Link href="/dashboard" className="flex items-center gap-2">
             <FolderKanban className="w-6 h-6 text-indigo-600" />
             <span className="text-lg font-semibold text-gray-900">
-              ProjectFlow
+              TaskFlow
             </span>
           </Link>
         </div>
